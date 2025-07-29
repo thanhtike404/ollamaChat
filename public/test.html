@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Chat Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .chat-container { border: 1px solid #ddd; height: 400px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
+        .message { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .user { background-color: #e3f2fd; text-align: right; }
+        .bot { background-color: #f5f5f5; }
+        .input-container { display: flex; gap: 10px; }
+        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 20px; background-color: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #1976d2; }
+        .status { padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .status.connected { background-color: #c8e6c9; }
+        .status.disconnected { background-color: #ffcdd2; }
+    </style>
+</head>
+<body>
+    <h1>MCP Chat Test</h1>
+    
+    <div id="status" class="status">Checking connection...</div>
+    
+    <div id="chat" class="chat-container"></div>
+    
+    <div class="input-container">
+        <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <h3>Quick Test Messages:</h3>
+        <button onclick="quickMessage('Hello, how are you?')">Say Hello</button>
+        <button onclick="quickMessage('Show me all products')">Show Products</button>
+        <button onclick="quickMessage('What are the most expensive products?')">Analyze Products</button>
+    </div>
+
+    <div style="margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px;">
+        <h3>MCP Tools</h3>
+        
+        <!-- Fetch Products Tool -->
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+            <h4>🔍 Fetch Products</h4>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <label>Category:</label>
+                <select id="fetchCategory">
+                    <option value="">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Sports">Sports</option>
+                    <option value="Kitchen">Kitchen</option>
+                </select>
+                <label>In Stock:</label>
+                <select id="fetchInStock">
+                    <option value="">All</option>
+                    <option value="true">In Stock</option>
+                    <option value="false">Out of Stock</option>
+                </select>
+                <button onclick="fetchProducts()">Fetch Products</button>
+            </div>
+        </div>
+
+        <!-- Analyze Products Tool -->
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+            <h4>🧠 Analyze Products</h4>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <input type="text" id="analyzeQuestion" placeholder="Ask a question about products..." style="flex: 1;">
+                <select id="analyzeCategory">
+                    <option value="">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Sports">Sports</option>
+                    <option value="Kitchen">Kitchen</option>
+                </select>
+                <button onclick="analyzeProducts()">Analyze</button>
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="setAnalyzeQuestion('What is the most expensive product?')">Most Expensive</button>
+                <button onclick="setAnalyzeQuestion('Which products are out of stock?')">Out of Stock</button>
+                <button onclick="setAnalyzeQuestion('Average price by category?')">Average Prices</button>
+                <button onclick="setAnalyzeQuestion('Give me details of product with id: 1')">Product Details</button>
+            </div>
+        </div>
+
+        <!-- Direct LLM Chat Tool -->
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+            <h4>💬 Direct LLM Chat</h4>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <input type="text" id="llmPrompt" placeholder="Chat directly with DeepSeek..." style="flex: 1;">
+                <button onclick="chatWithLLM()">Send to LLM</button>
+            </div>
+        </div>
+
+        <!-- Create Product Tool -->
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+            <h4>➕ Create Product</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <input type="text" id="productName" placeholder="Product Name" required>
+                <input type="number" id="productPrice" placeholder="Price" step="0.01" required>
+                <input type="text" id="productCategory" placeholder="Category" required>
+                <select id="productInStock">
+                    <option value="true">In Stock</option>
+                    <option value="false">Out of Stock</option>
+                </select>
+            </div>
+            <textarea id="productDescription" placeholder="Product Description" style="width: 100%; height: 60px; margin-bottom: 10px;"></textarea>
+            <button onclick="createProduct()">Create Product</button>
+        </div>
+
+        <!-- Available Tools List -->
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+            <h4>📋 Available MCP Tools</h4>
+            <button onclick="listTools()">List All Tools</button>
+            <div id="toolsList" style="margin-top: 10px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        
+        async function checkStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/mcp/ollama/status`);
+                const data = await response.json();
+                const statusDiv = document.getElementById('status');
+                
+                if (data.available) {
+                    statusDiv.textContent = `✅ Connected to ${data.model}`;
+                    statusDiv.className = 'status connected';
+                } else {
+                    statusDiv.textContent = '❌ Ollama not available';
+                    statusDiv.className = 'status disconnected';
+                }
+            } catch (error) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = '❌ Server not running';
+                statusDiv.className = 'status disconnected';
+            }
+        }
+        
+        function addMessage(content, isUser = false) {
+            const chatDiv = document.getElementById('chat');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            messageDiv.textContent = content;
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage(message, true);
+            input.value = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message })
+                });
+                
+                const data = await response.json();
+                
+                if (data.response) {
+                    addMessage(data.response);
+                } else if (data.error) {
+                    addMessage(`Error: ${data.error}`);
+                } else {
+                    addMessage('No response received');
+                }
+            } catch (error) {
+                addMessage(`Error: ${error.message}`);
+            }
+        }
+        
+        function quickMessage(message) {
+            document.getElementById('messageInput').value = message;
+            sendMessage();
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        // MCP Tool Functions
+        async function fetchProducts() {
+            const category = document.getElementById('fetchCategory').value;
+            const inStock = document.getElementById('fetchInStock').value;
+            
+            const input = {};
+            if (category) input.category = category;
+            if (inStock !== '') input.inStock = inStock === 'true';
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp/execute/fetch-products`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(input)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage(`Found ${data.result.count} products:`);
+                    addMessage(JSON.stringify(data.result.products, null, 2));
+                } else {
+                    addMessage(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage(`Error: ${error.message}`);
+            }
+        }
+        
+        async function analyzeProducts() {
+            const question = document.getElementById('analyzeQuestion').value.trim();
+            const category = document.getElementById('analyzeCategory').value;
+            
+            if (!question) {
+                addMessage('Please enter a question to analyze');
+                return;
+            }
+            
+            const input = { question };
+            if (category) input.category = category;
+            
+            addMessage(`Analyzing: ${question}`, true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp/execute/analyze-products`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(input)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage(data.result.analysis);
+                } else {
+                    addMessage(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage(`Error: ${error.message}`);
+            }
+        }
+        
+        function setAnalyzeQuestion(question) {
+            document.getElementById('analyzeQuestion').value = question;
+        }
+        
+        async function chatWithLLM() {
+            const prompt = document.getElementById('llmPrompt').value.trim();
+            
+            if (!prompt) {
+                addMessage('Please enter a prompt');
+                return;
+            }
+            
+            addMessage(`Direct LLM: ${prompt}`, true);
+            document.getElementById('llmPrompt').value = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp/execute/chat-llm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage(data.result.response);
+                } else {
+                    addMessage(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage(`Error: ${error.message}`);
+            }
+        }
+        
+        async function createProduct() {
+            const name = document.getElementById('productName').value.trim();
+            const price = parseFloat(document.getElementById('productPrice').value);
+            const category = document.getElementById('productCategory').value.trim();
+            const inStock = document.getElementById('productInStock').value === 'true';
+            const description = document.getElementById('productDescription').value.trim();
+            
+            if (!name || !price || !category) {
+                addMessage('Please fill in all required fields (Name, Price, Category)');
+                return;
+            }
+            
+            const input = { name, price, category, inStock };
+            if (description) input.description = description;
+            
+            addMessage(`Creating product: ${name}`, true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/mcp/execute/create-product`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(input)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage(data.result.message);
+                    addMessage(`Created: ${JSON.stringify(data.result.product, null, 2)}`);
+                    
+                    // Clear form
+                    document.getElementById('productName').value = '';
+                    document.getElementById('productPrice').value = '';
+                    document.getElementById('productCategory').value = '';
+                    document.getElementById('productDescription').value = '';
+                } else {
+                    addMessage(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage(`Error: ${error.message}`);
+            }
+        }
+        
+        async function listTools() {
+            try {
+                const response = await fetch(`${API_BASE}/mcp/tools`);
+                const data = await response.json();
+                
+                const toolsList = document.getElementById('toolsList');
+                toolsList.innerHTML = '<h5>Available MCP Tools:</h5>';
+                
+                data.tools.forEach(tool => {
+                    toolsList.innerHTML += `
+                        <div style="margin: 10px 0; padding: 10px; background-color: #f9f9f9; border-radius: 5px;">
+                            <strong>${tool.name}</strong><br>
+                            <small>${tool.description}</small>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                addMessage(`Error listing tools: ${error.message}`);
+            }
+        }
+        
+        // Add Enter key support for LLM prompt
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('llmPrompt').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    chatWithLLM();
+                }
+            });
+            
+            document.getElementById('analyzeQuestion').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    analyzeProducts();
+                }
+            });
+        });
+        
+        // Check status on load
+        checkStatus();
+        
+        // Check status every 30 seconds
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>
